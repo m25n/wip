@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/m25n/wip/stack"
 	"io"
 	"os"
 	"path/filepath"
@@ -43,7 +44,7 @@ func main() {
 			os.Exit(1)
 		}
 	case "show":
-		var items Stack[string]
+		var items stack.Stack[string]
 		err := wiplog.Each(func(_ time.Time, item string) {
 			items = items.Push(item)
 		}, func(_ time.Time) {
@@ -63,7 +64,7 @@ func main() {
 			i++
 		}
 	case "stats":
-		var times Stack[time.Time]
+		var times stack.Stack[time.Time]
 		var intervals []time.Duration
 		err := wiplog.Each(func(at time.Time, _ string) {
 			times = times.Push(at)
@@ -204,28 +205,4 @@ func (wl *WIPLog) openReadable() (*os.File, error) {
 
 func NewWIPLog(wipfile string) *WIPLog {
 	return &WIPLog{wipfile: wipfile}
-}
-
-type Stack[T any] []T
-
-func (s Stack[T]) Top() T {
-	var top T
-	if len(s) > 0 {
-		top = s[len(s)-1]
-	}
-	return top
-}
-func (s Stack[T]) Push(ts ...T) Stack[T] {
-	return append(s, ts...)
-}
-
-func (s Stack[T]) Pop() Stack[T] {
-	if len(s) == 0 {
-		return s
-	}
-	return s[:len(s)-1]
-}
-
-func (s Stack[T]) Size() int {
-	return len(s)
 }
