@@ -18,6 +18,8 @@ func (s Stack[T]) Pop() Stack[T] {
 	if len(s) == 0 {
 		return s
 	}
+	var empty T
+	s[len(s)-1] = empty
 	return s[:len(s)-1]
 }
 
