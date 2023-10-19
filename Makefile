@@ -15,3 +15,7 @@ build/wip-%: $(GOFILES) go.mod
 .PHONY: release
 release: build/wip-linux-amd64 build/wip-linux-arm64 build/wip-darwin-amd64 build/wip-darwin-arm64
 	gh release create v$(shell build/wip-$(shell go env GOOS)-$(shell go env GOARCH) version) --draft --generate-notes $^
+
+.PHONY: clean
+clean:
+	rm -rf build
