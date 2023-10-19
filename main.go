@@ -1,12 +1,9 @@
 package main
 
 import (
-	"bufio"
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"github.com/m25n/wip/stack"
-	"io"
+	"github.com/m25n/wip/wiplog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -18,7 +15,7 @@ const Version = "0.2.0"
 
 func main() {
 	wipfile := GetWIPFile()
-	wiplog := NewWIPLog(wipfile)
+	wl := wiplog.New(wipfile)
 	args := os.Args
 	command := "show"
 	if len(args) > 1 {
@@ -32,20 +29,20 @@ func main() {
 			os.Exit(1)
 		}
 		item := strings.Join(args[2:], " ")
-		err := wiplog.Push(time.Now(), item)
+		err := wl.Push(time.Now(), item)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, `error pushing item "%s": %s\n`, item, err.Error())
 			os.Exit(1)
 		}
 	case "pop":
-		err := wiplog.Pop(time.Now())
+		err := wl.Pop(time.Now())
 		if err != nil {
 			fmt.Fprintf(os.Stderr, `error poping item: %s\n`, err.Error())
 			os.Exit(1)
 		}
 	case "show":
 		var items stack.Stack[string]
-		err := wiplog.Each(func(_ time.Time, item string) {
+		err := wl.Each(func(_ time.Time, item string) {
 			items = items.Push(item)
 		}, func(_ time.Time) {
 			items = items.Pop()
@@ -66,7 +63,7 @@ func main() {
 	case "stats":
 		var times stack.Stack[time.Time]
 		var intervals []time.Duration
-		err := wiplog.Each(func(at time.Time, _ string) {
+		err := wl.Each(func(at time.Time, _ string) {
 			times = times.Push(at)
 		}, func(end time.Time) {
 			start := times.Top()
@@ -118,91 +115,4 @@ func DefaultWIPFile() string {
 		panic(err)
 	}
 	return filepath.Join(home, ".wip")
-}
-
-type WIPLog struct {
-	wipfile string
-}
-
-func (wl *WIPLog) Each(onPush func(time.Time, string), onPop func(time.Time)) error {
-	fh, err := wl.openReadable()
-	if err != nil {
-		return err
-	}
-	defer fh.Close()
-	lines := bufio.NewScanner(fh)
-	lines.Split(bufio.ScanLines)
-	for lines.Scan() {
-		line := lines.Bytes()
-		var op Op
-		err = json.Unmarshal(line, &op)
-		if err != nil {
-			return err
-		}
-		if op.Push != nil {
-			onPush(op.Push.At, op.Push.Item)
-		}
-		if op.Pop != nil {
-			onPop(op.Pop.At)
-		}
-	}
-	return lines.Err()
-}
-
-func (wl *WIPLog) Push(at time.Time, item string) error {
-	fh, err := wl.openWritable()
-	if err != nil {
-		return err
-	}
-	defer fh.Close()
-	op := &Op{Push: &PushOp{At: at, Item: item}}
-	buf := bytes.NewBuffer(nil)
-	err = json.NewEncoder(buf).Encode(op)
-	if err != nil {
-		return err
-	}
-	_, err = io.Copy(fh, buf)
-	return err
-}
-
-func (wl *WIPLog) Pop(at time.Time) error {
-	fh, err := wl.openWritable()
-	if err != nil {
-		return err
-	}
-	defer fh.Close()
-	op := &Op{Pop: &PopOp{At: at}}
-	buf := bytes.NewBuffer(nil)
-	err = json.NewEncoder(buf).Encode(op)
-	if err != nil {
-		return err
-	}
-	_, err = io.Copy(fh, buf)
-	return err
-}
-
-type Op struct {
-	Push *PushOp `json:"push,omitempty"`
-	Pop  *PopOp  `json:"pop,omitempty"`
-}
-
-type PushOp struct {
-	At   time.Time `json:"at"`
-	Item string    `json:"item"`
-}
-
-type PopOp struct {
-	At time.Time `json:"at"`
-}
-
-func (wl *WIPLog) openWritable() (*os.File, error) {
-	return os.OpenFile(wl.wipfile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
-}
-
-func (wl *WIPLog) openReadable() (*os.File, error) {
-	return os.OpenFile(wl.wipfile, os.O_CREATE|os.O_RDONLY, 0600)
-}
-
-func NewWIPLog(wipfile string) *WIPLog {
-	return &WIPLog{wipfile: wipfile}
 }
