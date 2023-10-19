@@ -19,11 +19,7 @@ func FromEnv() (WIPFile, error) {
 	}
 	switch uri.Scheme {
 	case "file":
-		filename, err := filepath.Abs(uri.Opaque)
-		if err != nil {
-			return nil, err
-		}
-		return &file{filename: filename}, nil
+		return &file{filename: uri.Opaque + uri.Path}, nil
 	default:
 		return nil, fmt.Errorf(`unknown wipfile scheme "%s"`, uri.Scheme)
 	}
