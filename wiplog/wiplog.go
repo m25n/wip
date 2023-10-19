@@ -1,35 +1,23 @@
 package wiplog
 
 import (
-	"bufio"
-	"bytes"
 	"encoding/json"
-	"io"
-	"os"
+	"github.com/m25n/wip/wipfile"
 	"time"
 )
 
 type WIPLog struct {
-	wipfile string
+	wipfile wipfile.WIPFile
 }
 
-func New(wipfile string) *WIPLog {
+func New(wipfile wipfile.WIPFile) *WIPLog {
 	return &WIPLog{wipfile: wipfile}
 }
 
 func (wl *WIPLog) Each(onPush func(time.Time, string), onPop func(time.Time)) error {
-	fh, err := wl.openReadable()
-	if err != nil {
-		return err
-	}
-	defer fh.Close()
-	lines := bufio.NewScanner(fh)
-	lines.Split(bufio.ScanLines)
-	for lines.Scan() {
-		line := lines.Bytes()
+	return wl.wipfile.Lines(func(line []byte) error {
 		var o op
-		err = json.Unmarshal(line, &o)
-		if err != nil {
+		if err := json.Unmarshal(line, &o); err != nil {
 			return err
 		}
 		if o.Push != nil {
@@ -38,46 +26,22 @@ func (wl *WIPLog) Each(onPush func(time.Time, string), onPop func(time.Time)) er
 		if o.Pop != nil {
 			onPop(o.Pop.At)
 		}
-	}
-	return lines.Err()
+		return nil
+	})
 }
 
 func (wl *WIPLog) Push(at time.Time, item string) error {
-	fh, err := wl.openWritable()
-	if err != nil {
-		return err
-	}
-	defer fh.Close()
-	o := &op{Push: &pushOp{At: at, Item: item}}
-	buf := bytes.NewBuffer(nil)
-	err = json.NewEncoder(buf).Encode(o)
-	if err != nil {
-		return err
-	}
-	_, err = io.Copy(fh, buf)
-	return err
+	return wl.writeOp(&op{Push: &pushOp{At: at, Item: item}})
 }
 
 func (wl *WIPLog) Pop(at time.Time) error {
-	fh, err := wl.openWritable()
+	return wl.writeOp(&op{Pop: &popOp{At: at}})
+}
+
+func (wl *WIPLog) writeOp(o *op) error {
+	line, err := json.Marshal(o)
 	if err != nil {
 		return err
 	}
-	defer fh.Close()
-	o := &op{Pop: &popOp{At: at}}
-	buf := bytes.NewBuffer(nil)
-	err = json.NewEncoder(buf).Encode(o)
-	if err != nil {
-		return err
-	}
-	_, err = io.Copy(fh, buf)
-	return err
-}
-
-func (wl *WIPLog) openWritable() (*os.File, error) {
-	return os.OpenFile(wl.wipfile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
-}
-
-func (wl *WIPLog) openReadable() (*os.File, error) {
-	return os.OpenFile(wl.wipfile, os.O_CREATE|os.O_RDONLY, 0600)
+	return wl.wipfile.AppendLine(line)
 }

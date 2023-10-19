@@ -2,16 +2,17 @@ package main
 
 import (
 	"fmt"
+	"github.com/m25n/wip/wipfile"
 	"github.com/m25n/wip/wiplog"
 	"os"
-	"path/filepath"
 )
 
 const Version = "0.2.0"
 
 func main() {
-	wipfile := GetWIPFile()
-	wl := wiplog.New(wipfile)
+	wf, err := wipfile.FromEnv()
+	HandleErr(err)
+	wl := wiplog.New(wf)
 	args := os.Args
 	command := "show"
 	if len(args) > 1 {
@@ -40,25 +41,4 @@ func HandleErr(err error) {
 		_, _ = fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
-}
-
-func GetWIPFile() string {
-	wipfile := os.Getenv("WIPFILE")
-	if wipfile != "" {
-		var err error
-		wipfile, err = filepath.Abs(wipfile)
-		if err != nil {
-			panic(err)
-		}
-		return wipfile
-	}
-	return DefaultWIPFile()
-}
-
-func DefaultWIPFile() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		panic(err)
-	}
-	return filepath.Join(home, ".wip")
 }
