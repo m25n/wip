@@ -1,3 +1,5 @@
+GOFILES = $(wildcard **/*.go)
+
 .PHONY: run/wip
 run/wip: build/wip
 	@WIPFILE=tmp/.wip $< $(WIP_ARGS)
@@ -5,10 +7,10 @@ run/wip: build/wip
 build/wip: build/wip-$(shell go env GOOS)-$(shell go env GOARCH)
 	cp -f $< $@
 
-build/wip-%: main.go go.mod
+build/wip-%: $(GOFILES) go.mod
 	GOOS=$(word 1,$(subst -, ,$(basename $*))) \
 	GOARCH=$(word 2,$(subst -, ,$(basename $*))) \
-	go build -o $@ ./main.go
+	go build -o $@ ./cmd/...
 
 .PHONY: release
 release: build/wip-linux-amd64 build/wip-linux-arm64 build/wip-darwin-amd64 build/wip-darwin-arm64
