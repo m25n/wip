@@ -24,76 +24,98 @@ func main() {
 
 	switch command {
 	case "push":
-		if len(args) < 3 {
-			fmt.Fprintf(os.Stderr, "usage: wip push <item>\n")
-			os.Exit(1)
-		}
-		item := strings.Join(args[2:], " ")
-		err := wl.Push(time.Now(), item)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, `error pushing item "%s": %s\n`, item, err.Error())
-			os.Exit(1)
-		}
+		HandleErr(PushItem(wl, args[2:]))
 	case "pop":
-		err := wl.Pop(time.Now())
-		if err != nil {
-			fmt.Fprintf(os.Stderr, `error poping item: %s\n`, err.Error())
-			os.Exit(1)
-		}
+		HandleErr(wl.Pop(time.Now()))
 	case "show":
-		var items stack.Stack[string]
-		err := wl.Each(func(_ time.Time, item string) {
-			items = items.Push(item)
-		}, func(_ time.Time) {
-			items = items.Pop()
-		})
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error parsing wipfile: %s\n", err.Error())
-			os.Exit(1)
-		}
-		if items.Size() == 0 {
-			fmt.Println("no items.")
-			os.Exit(0)
-		}
-		i := 0
-		for ; items.Size() > 0; items = items.Pop() {
-			fmt.Printf("%d: %s\n", i, items.Top())
-			i++
-		}
+		HandleErr(ShowStack(wl))
 	case "stats":
-		var times stack.Stack[time.Time]
-		var intervals []time.Duration
-		err := wl.Each(func(at time.Time, _ string) {
-			times = times.Push(at)
-		}, func(end time.Time) {
-			start := times.Top()
-			times.Pop()
-			intervals = append(intervals, end.Sub(start))
-		})
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error parsing wipfile: %s\n", err.Error())
-			os.Exit(1)
-		}
-		sort.Slice(intervals, func(i, j int) bool {
-			return intervals[i] < intervals[j]
-		})
-
-		if len(intervals) == 0 {
-			fmt.Println("no stats.")
-			os.Exit(0)
-		}
-		medianLow := max((len(intervals)/2)-1, 0)
-		medianHigh := ((len(intervals) + 1) / 2) - 1
-		medianCompletion := (intervals[medianLow] + intervals[medianHigh]) / 2
-		maxCompletion := intervals[len(intervals)-1]
-		fmt.Printf("median completion time: %s\n", medianCompletion)
-		fmt.Printf("max completion time: %s\n", maxCompletion)
+		HandleErr(ShowStats(wl))
 	case "version":
 		fmt.Println(Version)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command %s\n", args[1])
 		os.Exit(1)
 	}
+}
+
+func PushItem(wl *wiplog.WIPLog, args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: wip push <item>\n")
+	}
+	item := strings.Join(args, " ")
+	err := wl.Push(time.Now(), item)
+	if err != nil {
+		return fmt.Errorf(`error pushing item "%s": %s\n`, item, err.Error())
+	}
+	return nil
+}
+
+func HandleErr(err error) {
+	if err != nil {
+		_, _ = fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+}
+
+func ShowStats(wl *wiplog.WIPLog) error {
+	completions, err := ComputeStats(wl)
+	if err != nil {
+		return err
+	}
+	if len(completions) == 0 {
+		fmt.Println("no stats.")
+		return nil
+	}
+	medianLow := max((len(completions)/2)-1, 0)
+	medianHigh := ((len(completions) + 1) / 2) - 1
+	medianCompletion := (completions[medianLow] + completions[medianHigh]) / 2
+	maxCompletion := completions[len(completions)-1]
+	fmt.Printf("median completion time: %s\n", medianCompletion.Truncate(time.Second))
+	fmt.Printf("max completion time: %s\n", maxCompletion.Truncate(time.Second))
+	return nil
+}
+
+func ComputeStats(wl *wiplog.WIPLog) ([]time.Duration, error) {
+	var times stack.Stack[time.Time]
+	var completions []time.Duration
+	err := wl.Each(func(at time.Time, _ string) {
+		times = times.Push(at)
+	}, func(end time.Time) {
+		start := times.Top()
+		times = times.Pop()
+		completions = append(completions, end.Sub(start))
+	})
+	if err != nil {
+		return nil, fmt.Errorf("error parsing wipfile: %s\n", err.Error())
+	}
+	sort.Slice(completions, func(i, j int) bool {
+		return completions[i] < completions[j]
+	})
+	return completions, nil
+}
+
+func ShowStack(wl *wiplog.WIPLog) error {
+	var items stack.Stack[string]
+	err := wl.Each(func(_ time.Time, item string) {
+		items = items.Push(item)
+	}, func(_ time.Time) {
+		items = items.Pop()
+	})
+	if err != nil {
+		return fmt.Errorf("error parsing wipfile: %s\n", err.Error())
+	}
+	if items.Size() == 0 {
+		fmt.Println("no items.")
+		return nil
+	}
+	var i int
+	for items.Size() > 0 {
+		fmt.Printf("%d: %s\n", i, items.Top())
+		items = items.Pop()
+		i++
+	}
+	return nil
 }
 
 func GetWIPFile() string {

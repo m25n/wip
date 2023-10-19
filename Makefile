@@ -8,7 +8,7 @@ build/wip: build/wip-$(shell go env GOOS)-$(shell go env GOARCH)
 build/wip-%: main.go go.mod
 	GOOS=$(word 1,$(subst -, ,$(basename $*))) \
 	GOARCH=$(word 2,$(subst -, ,$(basename $*))) \
-	go build -o $@ ./...
+	go build -o $@ ./main.go
 
 .PHONY: release
 release: build/wip-linux-amd64 build/wip-linux-arm64 build/wip-darwin-amd64 build/wip-darwin-arm64
