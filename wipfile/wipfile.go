@@ -42,5 +42,5 @@ func defaultURI() (*url.URL, error) {
 	if err != nil {
 		return nil, err
 	}
-	return url.Parse(fmt.Sprintf("file://%s", filepath.Join(home, ".wip")))
+	return url.Parse(fmt.Sprintf("file:%s", filepath.Join(home, ".wip")))
 }
