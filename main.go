@@ -8,7 +8,9 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
+	"time"
 )
 
 const Version = "0.2.0"
@@ -29,34 +31,65 @@ func main() {
 			os.Exit(1)
 		}
 		item := strings.Join(args[2:], " ")
-		err := wiplog.Push(item)
+		err := wiplog.Push(time.Now(), item)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, `error pushing item "%s": %s\n`, item, err.Error())
 			os.Exit(1)
 		}
 	case "pop":
-		err := wiplog.Pop()
+		err := wiplog.Pop(time.Now())
 		if err != nil {
 			fmt.Fprintf(os.Stderr, `error poping item: %s\n`, err.Error())
 			os.Exit(1)
 		}
 	case "show":
-		var stack []string
-		err := wiplog.Each(func(pushedItem string) {
-			stack = append(stack, pushedItem)
-		}, func() {
-			if len(stack) == 0 {
-				return
-			}
-			stack = stack[:len(stack)-1]
+		var items Stack[string]
+		err := wiplog.Each(func(_ time.Time, item string) {
+			items = items.Push(item)
+		}, func(_ time.Time) {
+			items = items.Pop()
 		})
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error parsing wipfile: %s\n", err.Error())
 			os.Exit(1)
 		}
-		for i := 0; i < len(stack); i++ {
-			fmt.Printf("%d: %s\n", i, stack[len(stack)-1-i])
+		if items.Size() == 0 {
+			fmt.Println("no items.")
+			os.Exit(0)
 		}
+		i := 0
+		for ; items.Size() > 0; items = items.Pop() {
+			fmt.Printf("%d: %s\n", i, items.Top())
+			i++
+		}
+	case "stats":
+		var times Stack[time.Time]
+		var intervals []time.Duration
+		err := wiplog.Each(func(at time.Time, _ string) {
+			times = times.Push(at)
+		}, func(end time.Time) {
+			start := times.Top()
+			times.Pop()
+			intervals = append(intervals, end.Sub(start))
+		})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error parsing wipfile: %s\n", err.Error())
+			os.Exit(1)
+		}
+		sort.Slice(intervals, func(i, j int) bool {
+			return intervals[i] < intervals[j]
+		})
+
+		if len(intervals) == 0 {
+			fmt.Println("no stats.")
+			os.Exit(0)
+		}
+		medianLow := max((len(intervals)/2)-1, 0)
+		medianHigh := ((len(intervals) + 1) / 2) - 1
+		medianCompletion := (intervals[medianLow] + intervals[medianHigh]) / 2
+		maxCompletion := intervals[len(intervals)-1]
+		fmt.Printf("median completion time: %s\n", medianCompletion)
+		fmt.Printf("max completion time: %s\n", maxCompletion)
 	case "version":
 		fmt.Println(Version)
 	default:
@@ -90,7 +123,7 @@ type WIPLog struct {
 	wipfile string
 }
 
-func (wl *WIPLog) Each(onPush func(string), onPop func()) error {
+func (wl *WIPLog) Each(onPush func(time.Time, string), onPop func(time.Time)) error {
 	fh, err := wl.openReadable()
 	if err != nil {
 		return err
@@ -106,22 +139,22 @@ func (wl *WIPLog) Each(onPush func(string), onPop func()) error {
 			return err
 		}
 		if op.Push != nil {
-			onPush(op.Push.Item)
+			onPush(op.Push.At, op.Push.Item)
 		}
 		if op.Pop != nil {
-			onPop()
+			onPop(op.Pop.At)
 		}
 	}
 	return lines.Err()
 }
 
-func (wl *WIPLog) Push(item string) error {
+func (wl *WIPLog) Push(at time.Time, item string) error {
 	fh, err := wl.openWritable()
 	if err != nil {
 		return err
 	}
 	defer fh.Close()
-	op := &Op{Push: &PushOp{Item: item}}
+	op := &Op{Push: &PushOp{At: at, Item: item}}
 	buf := bytes.NewBuffer(nil)
 	err = json.NewEncoder(buf).Encode(op)
 	if err != nil {
@@ -131,13 +164,13 @@ func (wl *WIPLog) Push(item string) error {
 	return err
 }
 
-func (wl *WIPLog) Pop() error {
+func (wl *WIPLog) Pop(at time.Time) error {
 	fh, err := wl.openWritable()
 	if err != nil {
 		return err
 	}
 	defer fh.Close()
-	op := &Op{Pop: &PopOp{}}
+	op := &Op{Pop: &PopOp{At: at}}
 	buf := bytes.NewBuffer(nil)
 	err = json.NewEncoder(buf).Encode(op)
 	if err != nil {
@@ -153,10 +186,13 @@ type Op struct {
 }
 
 type PushOp struct {
-	Item string `json:"item"`
+	At   time.Time `json:"at"`
+	Item string    `json:"item"`
 }
 
-type PopOp struct{}
+type PopOp struct {
+	At time.Time `json:"at"`
+}
 
 func (wl *WIPLog) openWritable() (*os.File, error) {
 	return os.OpenFile(wl.wipfile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
@@ -168,4 +204,28 @@ func (wl *WIPLog) openReadable() (*os.File, error) {
 
 func NewWIPLog(wipfile string) *WIPLog {
 	return &WIPLog{wipfile: wipfile}
+}
+
+type Stack[T any] []T
+
+func (s Stack[T]) Top() T {
+	var top T
+	if len(s) > 0 {
+		top = s[len(s)-1]
+	}
+	return top
+}
+func (s Stack[T]) Push(ts ...T) Stack[T] {
+	return append(s, ts...)
+}
+
+func (s Stack[T]) Pop() Stack[T] {
+	if len(s) == 0 {
+		return s
+	}
+	return s[:len(s)-1]
+}
+
+func (s Stack[T]) Size() int {
+	return len(s)
 }
