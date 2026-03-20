@@ -2,9 +2,10 @@ package main
 
 import (
 	"fmt"
+	"os"
+
 	"github.com/m25n/wip/wipfile"
 	"github.com/m25n/wip/wiplog"
-	"os"
 )
 
 const Version = "0.2.0"
@@ -24,6 +25,8 @@ func main() {
 		HandleErr(PushItem(wl, args[2:]))
 	case "pop":
 		HandleErr(PopItem(wl))
+	case "move":
+		HandleErr(MoveItem(wl, args[2:]))
 	case "show":
 		HandleErr(ShowStack(wl))
 	case "stats":

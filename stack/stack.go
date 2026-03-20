@@ -26,3 +26,25 @@ func (s Stack[T]) Pop() Stack[T] {
 func (s Stack[T]) Size() int {
 	return len(s)
 }
+
+func (s Stack[T]) Move(from int, to int) Stack[T] {
+	var buf Stack[T]
+	var moved T
+	for i := 0; i <= max(from, to); i++ {
+		if i == from {
+			moved = s.Top()
+		} else {
+			buf = buf.Push(s.Top())
+		}
+		s = s.Pop()
+	}
+	for i := max(from, to); i >= 0; i-- {
+		if i == to {
+			s = s.Push(moved)
+			continue
+		}
+		s = s.Push(buf.Top())
+		buf = buf.Pop()
+	}
+	return s
+}

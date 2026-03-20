@@ -1,9 +1,10 @@
 package stack_test
 
 import (
+	"testing"
+
 	"github.com/m25n/wip/stack"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func TestStack(t *testing.T) {
@@ -45,5 +46,29 @@ func TestStack(t *testing.T) {
 		var s stack.Stack[int]
 
 		require.Empty(t, s.Top())
+	})
+
+	t.Run("can move items down the stack", func(t *testing.T) {
+		var s stack.Stack[int]
+		s = s.Push(1).Push(2).Push(3)
+		s = s.Move(0, 2)
+
+		require.Equal(t, 2, s.Top())
+		s = s.Pop()
+		require.Equal(t, 1, s.Top())
+		s = s.Pop()
+		require.Equal(t, 3, s.Top())
+	})
+
+	t.Run("can move items up the stack", func(t *testing.T) {
+		var s stack.Stack[int]
+		s = s.Push(1).Push(2).Push(3)
+		s = s.Move(2, 0)
+
+		require.Equal(t, 1, s.Top())
+		s = s.Pop()
+		require.Equal(t, 3, s.Top())
+		s = s.Pop()
+		require.Equal(t, 2, s.Top())
 	})
 }
